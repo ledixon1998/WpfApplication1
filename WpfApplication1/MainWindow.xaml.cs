@@ -27,7 +27,7 @@ namespace WpfApplication1
 
         private void Button_Click(object sender, RoutedEventArgs e)
         {
-            TextOutput.Content = TextInput.Text;
+            TextOutput.Content = "Hello " + TextInput.Text;
         }
     }
 }
