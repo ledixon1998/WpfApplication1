@@ -14,6 +14,7 @@ using System.Windows.Navigation;
 using System.Windows.Shapes;
 using NAudio.Wave;
 using NAudio.CoreAudioApi;
+using Fourier;
 
 namespace WpfApplication1
 {
@@ -23,27 +24,46 @@ namespace WpfApplication1
     /// </summary>
     public partial class MainWindow : Window
     {
-        private IWaveIn elliesPhatBeats;
-        private IWavePlayer elliesPhatPlayer;
-        public List<MMDevice> recordDevices { get; private set; }
-        public List<MMDevice> playDevices { get; private set; }
+        private WaveIn elliesPhatBeats;
+        private WaveOut elliesPhatPlayer;
         private BufferedWaveProvider bwp;
+        private int SampleRate = 44100;
+        private AudioAnalyser analyser;
 
         public MainWindow()
         {
             InitializeComponent();
             /// Initialises a device enumerator to count/ find multimedia devices
             MMDeviceEnumerator deviceEnum = new MMDeviceEnumerator();
-
+            
             /// Creates list of recording multimedia devices, then playback devices
-            recordDevices = deviceEnum.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active).ToList();
-            playDevices = deviceEnum.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active).ToList();
+            try
+            {
+                int waveInDevices = WaveIn.DeviceCount;
+                for (int waveInDevice = 0; waveInDevice < waveInDevices; waveInDevice++)
+                {
+                    WaveInCapabilities deviceInfo = WaveIn.GetCapabilities(waveInDevice);
+                    string device = string.Format("Device {0}: {1}, {2} channels",
+                        waveInDevice, deviceInfo.ProductName, deviceInfo.Channels);
+                    ComboDevicesRecording.Items.Add(device);
+                }
 
-            /// Puts recording devices into recording combo box and sets default selection to the first device in the box
-            ComboDevicesRecording.ItemsSource = recordDevices;
-            if( recordDevices.Count > 0 )
+                int waveOutDevices = WaveOut.DeviceCount;
+                for (int waveOutDevice = 0; waveOutDevice < waveOutDevices; waveOutDevice++)
+                {
+                    WaveOutCapabilities deviceInfo = WaveOut.GetCapabilities(waveOutDevice);
+                    string device = string.Format("Device {0}: {1}, {2} channels",
+                        waveOutDevice, deviceInfo.ProductName, deviceInfo.Channels);
+                    ComboDevicesPlayback.Items.Add(device);
+                }
+            }
+
+            catch (Exception ex)
+            {
+                MessageBox.Show("There was an error getting audio devices: " + ex.Message);
+            }
+
             ComboDevicesRecording.SelectedIndex = 0;
-            ComboDevicesPlayback.ItemsSource = playDevices;
             ComboDevicesPlayback.SelectedIndex = 0;
         }
 
@@ -52,28 +72,62 @@ namespace WpfApplication1
         /// </summary>
         private void Button_Click(object sender, RoutedEventArgs e)
         {
-            CPUOutput.Content = "Hello " + UserInput.Text;
+            if (elliesPhatBeats != null)
+            {
+                elliesPhatBeats.StopRecording();
+                if (elliesPhatPlayer != null)
+                {
+                    elliesPhatPlayer.Stop();
+                }
+                elliesPhatBeats = null;
+                elliesPhatPlayer = null;
 
-            /// Assigns pointer 'temp' to selected recording device in combo box
-            MMDevice temp = (MMDevice)ComboDevicesRecording.SelectedItem;
-            /// elliesPhatBeats instatiated as Wasapi capture class with selected recording device
-            elliesPhatBeats = new WasapiCapture(temp);
-            /// calls OnDataAvailable event handler when data is available in elliesPhatBeats from the recording device
-            elliesPhatBeats.DataAvailable += OnDataAvailable;
+            }
+            else
+            {
+                // elliesPhatBeats instatiated as WaveIn class with selected recording device
+                elliesPhatBeats = new WaveIn();
+                elliesPhatBeats.DeviceNumber = ComboDevicesRecording.SelectedIndex;
+                elliesPhatBeats.WaveFormat = new WaveFormat(SampleRate, 1 /* 1 channel = mono */);
+                // calls OnDataAvailable event handler when data is available in elliesPhatBeats from the recording device
+                elliesPhatBeats.DataAvailable += OnDataAvailable;
+                elliesPhatBeats.BufferMilliseconds = 25;
+                elliesPhatBeats.RecordingStopped += AutomaticStop;
 
-            ///elliesPhatPlayer instatiated as Wasapi playback class with selected playback device, exclusive playback from soundcard and latency of 50ms
-            elliesPhatPlayer = new WasapiOut(
-                (MMDevice)ComboDevicesPlayback.SelectedItem,
-                AudioClientShareMode.Exclusive,
-                false, 50);
-            /// creates a BufferedWaveProvider class (essentially a data array for storing recorded sound data) called bwp with waveformat of the recording input
-            bwp = new BufferedWaveProvider(elliesPhatBeats.WaveFormat);
-            /// initialises the playback to use the data from the buffered wave provider
-            elliesPhatPlayer.Init(bwp);
+                //elliesPhatPlayer instatiated as WaveOut class with selected playback device
+                elliesPhatPlayer = new WaveOut();
+                elliesPhatPlayer.DeviceNumber = ComboDevicesPlayback.SelectedIndex;
+                elliesPhatPlayer.DesiredLatency = 100;
+                elliesPhatPlayer.PlaybackStopped += AutomaticStop;
 
-            /// tells player to play and recorder to record
-            elliesPhatPlayer.Play();
-            elliesPhatBeats.StartRecording();
+                // We want to now set up the following chain of audio:
+                // elliesPhatBeats -> BufferedWaveProvider -> AudioAnalyser -> elliesPhatPlayer
+
+                // creates a BufferedWaveProvider class (essentially a data array for storing recorded sound data) called bwp with waveformat of the recording input
+                bwp = new BufferedWaveProvider(elliesPhatBeats.WaveFormat);
+                // initialises the playback to use the data from the buffered wave provider
+                analyser = new AudioAnalyser(bwp, FFT, Playback);
+                analyser.bpc = Bandpass;
+                elliesPhatPlayer.Init(analyser);
+
+                // tells player to play and recorder to record
+                elliesPhatPlayer.Play();
+                elliesPhatBeats.StartRecording();
+            }
+        }
+
+        void AutomaticStop(object sender, StoppedEventArgs e)
+        {
+            if (elliesPhatBeats != null)
+            {
+                elliesPhatBeats.StopRecording();
+                elliesPhatBeats = null;
+            }
+            if (elliesPhatPlayer != null)
+            {
+                elliesPhatPlayer.Stop();
+                elliesPhatPlayer = null;
+            }
         }
 
         /// <summary>
@@ -92,47 +146,26 @@ namespace WpfApplication1
 
             /// Gives samples to bwp from recording device
             bwp.AddSamples(e.Buffer, 0, e.BytesRecorded);
+            WaveBuffer wb = new WaveBuffer(e.Buffer);
 
-            int[] Convertedsamples = ConvertSamples(e.Buffer, e.BytesRecorded);
-            DrawWaveform(Convertedsamples, e.BytesRecorded / 4);
+            //DrawWaveform(Waveform, wb.ShortBuffer, e.BytesRecorded/2);
+            ffnumber.Content = analyser.Fundamental;
         }
 
-        int[] ConvertSamples(byte[] input, int arraysize)
+        private void CrossBufferSizeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            int[] Dataarray = new int[arraysize/4];
-
-            for (int i = 0; i < arraysize; i += 4)
+            if (analyser != null)
             {
-#if false
-                int temp = (int)input[i+3];
-                temp += (int)(input[i+2] * 256);
-                temp += (int)(input[i + 1] * 256 * 256);
-                temp += (int)(input[i + 0] * 256 * 256 * 256);
-                Dataarray[i / 4] = temp;
-#else
-                Dataarray[i / 4] = ((((int)input[i + 3]) << 24) |
-                                    (((int)input[i + 2]) << 16)|
-                                    (((int)input[i + 1]) << 8) |
-                                    (((int)input[i + 0]) ));
-#endif
+                analyser.CrossfadeSampleSize = (int)CrossBufferSizeSlider.Value;
             }
-
-            return Dataarray;
         }
 
-        void DrawWaveform(int[] convertedsamples, int convertedarraysize)
+        private void GraphScaleSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            WriteableBitmap Wavemap = new WriteableBitmap((int)Waveform.Width, (int)Waveform.Height, 96, 96, PixelFormats.Bgr32, null);
-
-            byte[] colorData = { 200, 100, 50, 255 };
-
-            for (int x=0; x < (int)Waveform.Width; x++)
+            if (analyser != null)
             {
-                int y = (int)convertedsamples[x]/147483647 + ((int)Waveform.Height/2);
-                Wavemap.WritePixels(new Int32Rect(x, y, 1, 1), colorData, 4, 0); 
+                analyser.GraphScale = GraphScaleSlider.Value;
             }
-
-            Waveform.Source = Wavemap;
         }
     }
 }
