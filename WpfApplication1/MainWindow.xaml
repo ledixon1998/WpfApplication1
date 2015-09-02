@@ -9,7 +9,7 @@
         <Label x:Name="CPUOutput" Content="Label" HorizontalAlignment="Left" Margin="37,41,0,0" VerticalAlignment="Top" Height="56" Width="138"/>
         <ComboBox x:Name="ComboDevicesRecording" ItemsSource="{Binding recordDevices}"  HorizontalAlignment="Left" Margin="37,129,0,0" VerticalAlignment="Top" Width="209"/>
         <ComboBox x:Name="ComboDevicesPlayback" ItemsSource="{Binding playDevices}" HorizontalAlignment="Left" Margin="37,156,0,0" VerticalAlignment="Top" Width="209"/>
-        <Image x:Name="Waveform" HorizontalAlignment="Left" Height="100" Margin="43,196,0,0" VerticalAlignment="Top" Width="384"/>
+        <Image x:Name="Waveform" HorizontalAlignment="Left" Height="100" Margin="22,196,0,0" VerticalAlignment="Top" Width="384"/>
         <Label x:Name="label" Content="Fundamental Frequency: " HorizontalAlignment="Left" Height="26" Margin="266,138,0,0" VerticalAlignment="Top" Width="140"/>
         <Label x:Name="ffnumber" Content="" HorizontalAlignment="Left" Height="26" Margin="432,138,0,0" VerticalAlignment="Top" Width="42"/>
         <Image x:Name="FFT" HorizontalAlignment="Left" Height="100" Margin="10,305,0,0" VerticalAlignment="Top" Width="731"/>
