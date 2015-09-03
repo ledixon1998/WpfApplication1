@@ -22,9 +22,10 @@ namespace WpfApplication1
     {
         public int LowValue;
         public int HighValue;
-        public int WindowSize { get { int v; if (!int.TryParse(textBox.Text, out v)) v = 4096; return v; } }
-        public bool ByPass {  get { return (bool)Bypass.IsChecked; } }
-        public double Gain = 4.0;
+        public int WindowSize { get { int v; if (textBox == null || !int.TryParse(textBox.Text, out v)) v = 4096; return v; } }
+        public bool ByPass { get { return (bool)Bypass.IsChecked; } }
+        public bool Invert { get { return (bool)InvertCheck.IsChecked; } }
+        public double Gain { get { return GainSlider.Value; } }
 
         public BandpassControl()
         {
@@ -35,8 +36,9 @@ namespace WpfApplication1
         {
             if (LowLabel != null)
             {
-                LowValue = (int)(Math.Pow(Low.Value, 2) * (32768 / 2));
-                LowLabel.Content = LowValue;
+                double scaled = Low.Value * Math.Log(WindowSize, 10);
+                LowValue = (int)(Math.Pow(10, scaled));
+                LowLabel.Content = LowValue*44100/WindowSize;
             }
         }
 
@@ -44,9 +46,19 @@ namespace WpfApplication1
         {
             if (HighLabel != null)
             {
-                HighValue = (int)(Math.Pow(High.Value, 2) * (32768 / 2));
-                HighLabel.Content = HighValue;
+                double scaled = High.Value * Math.Log(WindowSize, 10);
+                HighValue = (int)(Math.Pow(10, scaled));
+                HighLabel.Content = HighValue*44100/WindowSize;
             }
+        }
+
+        private void Slider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (GainLabel != null)
+            {
+                GainLabel.Content = GainSlider.Value;
+            }
+
         }
     }
 }

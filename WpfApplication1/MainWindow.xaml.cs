@@ -141,15 +141,11 @@ namespace WpfApplication1
                 Dispatcher.Invoke(new EventHandler<WaveInEventArgs>(OnDataAvailable), sender, e);
                 return;
             }
-            /// Writes in window the number of bytes in the buffer
-            CPUOutput.Content = "Been given " + e.BytesRecorded + " Bytes";
-
             /// Gives samples to bwp from recording device
             bwp.AddSamples(e.Buffer, 0, e.BytesRecorded);
             WaveBuffer wb = new WaveBuffer(e.Buffer);
 
             //DrawWaveform(Waveform, wb.ShortBuffer, e.BytesRecorded/2);
-            ffnumber.Content = analyser.Fundamental;
         }
 
         private void CrossBufferSizeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
